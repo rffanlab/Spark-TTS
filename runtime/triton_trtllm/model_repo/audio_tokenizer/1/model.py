@@ -32,7 +32,7 @@ import triton_python_backend_utils as pb_utils
 import os
 import numpy as np
 
-from sparktts.models.audio_tokenizer import BiCodecTokenizer
+from SparkTTS.sparktts.models.audio_tokenizer import BiCodecTokenizer
 
 class TritonPythonModel:
     """Triton Python model for audio tokenization.

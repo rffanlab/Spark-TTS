@@ -34,7 +34,7 @@ from torch.utils.dlpack import to_dlpack
 
 import triton_python_backend_utils as pb_utils
 
-from sparktts.models.bicodec import BiCodec
+from SparkTTS.sparktts.models.bicodec import BiCodec
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

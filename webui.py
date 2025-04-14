@@ -23,7 +23,7 @@ import platform
 
 from datetime import datetime
 from cli.SparkTTS import SparkTTS
-from sparktts.utils.token_parser import LEVELS_MAP_UI
+from SparkTTS.sparktts.utils.token_parser import LEVELS_MAP_UI
 
 
 def initialize_model(model_dir="pretrained_models/Spark-TTS-0.5B", device=0):

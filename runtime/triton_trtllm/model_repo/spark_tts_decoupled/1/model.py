@@ -38,7 +38,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 import triton_python_backend_utils as pb_utils
 from transformers import AutoTokenizer
 
-from sparktts.utils.token_parser import TASK_TOKEN_MAP
+from SparkTTS.sparktts.utils.token_parser import TASK_TOKEN_MAP
 
 
 def process_prompt(
