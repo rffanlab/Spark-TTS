@@ -14,7 +14,8 @@ try:
         QSlider, QComboBox, QMessageBox, QProgressDialog, QSizePolicy, QGroupBox
     )
     from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl
-    from PySide6.QtGui import QDesktopServices # For opening file location
+    # Import QIcon for the favicon
+    from PySide6.QtGui import QDesktopServices, QIcon
     from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 except ImportError:
     print("错误：缺少 PySide6 库。")
@@ -44,11 +45,9 @@ except ImportError as e:
     print("   (特别是来自 `cli` 和 `sparktts` 的导入)。")
     print("4. 检查 `spark_tts_backend.py` 中是否有打印 'FATAL ERROR' 的消息。")
     print("="*60 + "\n")
-    # Keep the application running briefly to show the error in a message box
-    # before exiting.
-    app_temp = QApplication.instance() # Get instance if exists
+    app_temp = QApplication.instance()
     if not app_temp:
-         app_temp = QApplication(sys.argv) # Create if needed for msgbox
+         app_temp = QApplication(sys.argv)
     QMessageBox.critical(None, "启动错误", "无法加载必要的后端代码 (spark_tts_backend.py)。\n请查看控制台输出获取详细信息。")
     sys.exit(1)
 
@@ -59,10 +58,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # --- TTS Worker Thread ---
 class TTSWorker(QThread):
     """Runs TTS inference in a separate thread to avoid blocking the GUI."""
-    # Signals must be defined as class attributes
-    finished = Signal(str)  # Emits the path to the generated audio file or None on failure
-    error = Signal(str)     # Emits error messages
-    progress = Signal(str)  # Emits progress messages (optional)
+    finished = Signal(str)
+    error = Signal(str)
+    progress = Signal(str)
 
     def __init__(self, model, args_dict):
         super().__init__()
@@ -73,17 +71,15 @@ class TTSWorker(QThread):
     def run(self):
         try:
             logging.info(f"TTS 线程开始，参数: {self.args}")
-            self.progress.emit("正在初始化推理...") # Example progress update
+            self.progress.emit("正在初始化推理...")
             if self._is_cancelled:
                  self.error.emit("任务在开始前被取消。")
                  return
 
-            # Run the actual TTS function from the backend
             result_path = run_tts(self.model, **self.args)
 
             if self._is_cancelled:
                  self.error.emit("任务在处理过程中被取消。")
-                 # Optionally delete the partially generated file if applicable
                  if result_path and os.path.exists(result_path):
                      try:
                          os.remove(result_path)
@@ -92,18 +88,16 @@ class TTSWorker(QThread):
                          logging.warning(f"无法删除取消任务的文件 '{result_path}': {e}")
                  return
 
-            # Emit result or error based on backend function's return
             if result_path:
                 self.finished.emit(result_path)
             else:
-                # Pass a more specific error message if possible (backend now returns None on error)
                  self.error.emit("TTS 推理失败。请查看控制台日志获取详细错误信息。")
 
         except FileNotFoundError as e:
              logging.exception("TTS 线程出错 - 文件未找到")
              self.error.emit(f"文件错误: {e}")
         except Exception as e:
-            logging.exception("TTS 线程执行时发生意外错误") # Log traceback
+            logging.exception("TTS 线程执行时发生意外错误")
             self.error.emit(f"TTS 执行时发生意外错误: {e}")
 
     def cancel(self):
@@ -118,18 +112,31 @@ class SparkTTS_GUI(QMainWindow):
         self.model = model
         self.model_dir = model_dir
         self.last_generated_audio_path = None
-        self.last_generated_filename = None # <-- Added: Store filename for display
+        self.last_generated_filename = None
         self.tts_thread = None
         self.progress_dialog = None
 
         self.setWindowTitle(f"SparkTTS 图形界面 (模型: {Path(model_dir).name})")
-        self.setGeometry(100, 100, 750, 600) # Adjusted size
+        self.setGeometry(100, 100, 750, 600)
+
+        # --- Set Window Icon (Favicon) ---
+        # Construct the absolute path to the icon file relative to this script
+        # Assumes favico.ico is in the same directory as gui.py (script_dir)
+        icon_path = os.path.join(script_dir, "favico.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+            logging.info(f"已设置窗口图标: {icon_path}")
+        else:
+            logging.warning(f"未找到窗口图标文件: {icon_path}，使用默认图标。")
+            # Optionally set a default Qt icon if preferred
+            # from PySide6.QtWidgets import QStyle
+            # self.setWindowIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
+
 
         # --- Audio Playback Setup ---
         self.player = QMediaPlayer()
-        self.audio_output = QAudioOutput() # Required for volume/muting etc. on some platforms
+        self.audio_output = QAudioOutput()
         self.player.setAudioOutput(self.audio_output)
-        # Connect signals for playback status and errors
         self.player.errorOccurred.connect(self.media_player_error)
         self.player.mediaStatusChanged.connect(self.media_status_changed)
         self.player.playbackStateChanged.connect(self.playback_state_changed)
@@ -145,12 +152,10 @@ class SparkTTS_GUI(QMainWindow):
         self.main_layout.addWidget(self.tabs)
 
         # --- Create Tabs ---
-        # Pass `self` so tabs can potentially access main window methods if needed
         self.create_voice_clone_tab()
         self.create_voice_creation_tab()
 
         # --- Global Output/Player Controls ---
-        # Moved player controls outside tabs for global access
         self.output_group = QGroupBox("播放控制")
         self.output_layout = QHBoxLayout()
         self.output_group.setLayout(self.output_layout)
@@ -251,10 +256,6 @@ class SparkTTS_GUI(QMainWindow):
         self.text_input_create = QTextEdit()
         self.text_input_create.setPlaceholderText("在此输入需要转换成语音的文字 (换行符和制表符将被替换为空格)...")
         self.text_input_create.setMinimumHeight(100)
-        # Example Text Button
-        # btn_example_text = QPushButton("加载示例")
-        # btn_example_text.clicked.connect(lambda: self.text_input_create.setText("你可以通过调整音高和语速等参数，生成一个定制化的声音。"))
-        # text_layout.addWidget(btn_example_text, alignment=Qt.AlignmentFlag.AlignRight)
         text_layout.addWidget(self.text_input_create)
         text_group.setLayout(text_layout)
         layout_create.addWidget(text_group)
@@ -268,7 +269,6 @@ class SparkTTS_GUI(QMainWindow):
         gender_layout = QVBoxLayout()
         gender_layout.addWidget(QLabel("选择性别:"))
         self.gender_combo = QComboBox()
-        # Store 'male'/'female' as user data for easy retrieval
         self.gender_combo.addItem("男声", "male")
         self.gender_combo.addItem("女声", "female")
         gender_layout.addWidget(self.gender_combo)
@@ -285,33 +285,30 @@ class SparkTTS_GUI(QMainWindow):
             slider.setValue(default_val)
             slider.setTickPosition(QSlider.TickPosition.TicksBelow)
             slider.setTickInterval(tick_interval)
-            # Add value label feedback (Optional but nice)
             value_label = QLabel(f"{default_val}")
             slider.valueChanged.connect(lambda value, lbl=value_label: lbl.setText(str(value)))
             slider_layout.addWidget(slider)
-            slider_layout.addWidget(value_label, alignment=Qt.AlignmentFlag.AlignCenter) # Center the value
+            slider_layout.addWidget(value_label, alignment=Qt.AlignmentFlag.AlignCenter)
             slider_layout.addStretch()
             return slider_layout, slider
 
         # Pitch Slider
         pitch_group_layout, self.pitch_slider = create_slider_group("音高 (1低 - 5高):", 1, 5, 3)
-        # Add labels for slider ends
         hbox_pitch_labels = QHBoxLayout()
         hbox_pitch_labels.addWidget(QLabel("低"))
         hbox_pitch_labels.addStretch()
         hbox_pitch_labels.addWidget(QLabel("高"))
-        pitch_group_layout.insertLayout(2, hbox_pitch_labels) # Insert labels below slider
+        pitch_group_layout.insertLayout(2, hbox_pitch_labels)
         params_layout.addLayout(pitch_group_layout)
 
 
         # Speed Slider
         speed_group_layout, self.speed_slider = create_slider_group("语速 (1慢 - 5快):", 1, 5, 3)
-        # Add labels for slider ends
         hbox_speed_labels = QHBoxLayout()
         hbox_speed_labels.addWidget(QLabel("慢"))
         hbox_speed_labels.addStretch()
         hbox_speed_labels.addWidget(QLabel("快"))
-        speed_group_layout.insertLayout(2, hbox_speed_labels) # Insert labels below slider
+        speed_group_layout.insertLayout(2, hbox_speed_labels)
         params_layout.addLayout(speed_group_layout)
 
         params_group.setLayout(params_layout)
@@ -334,30 +331,25 @@ class SparkTTS_GUI(QMainWindow):
         """Removes or replaces unwanted characters like \n, \t."""
         if not input_text:
             return ""
-        # Replace \n and \t with a space
         cleaned = input_text.replace('\n', ' ').replace('\t', ' ')
-        # Optional: Replace multiple spaces with a single space
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-        # Optional: Add more cleaning rules here if needed
-        # e.g., remove specific symbols, etc.
         return cleaned
 
     # --- Event Handlers ---
     @Slot()
     def select_prompt_audio(self):
         """Opens a file dialog to select the prompt audio."""
-        # Use the last directory if available, otherwise default to home
         start_dir = os.path.dirname(self.prompt_audio_path_edit.text()) if self.prompt_audio_path_edit.text() else str(Path.home())
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "选择参考音频文件",
             start_dir,
-            "音频文件 (*.wav *.mp3 *.flac);;所有文件 (*)" # Filter for common audio types
+            "音频文件 (*.wav *.mp3 *.flac);;所有文件 (*)"
         )
         if file_path:
             self.prompt_audio_path_edit.setText(file_path)
             logging.info(f"已选择参考音频: {file_path}")
-            self.statusBar().showMessage(f"已选择参考音频: {Path(file_path).name}", 5000) # Show for 5 secs
+            self.statusBar().showMessage(f"已选择参考音频: {Path(file_path).name}", 5000)
 
     @Slot()
     def run_voice_clone(self):
@@ -366,73 +358,60 @@ class SparkTTS_GUI(QMainWindow):
         raw_prompt_text = self.prompt_text_input_clone.toPlainText().strip()
         prompt_speech = self.prompt_audio_path_edit.text().strip()
 
-        # --- Clean Text Inputs ---
         text = self.clean_text(raw_text)
-        prompt_text = self.clean_text(raw_prompt_text) # Also clean prompt text
+        prompt_text = self.clean_text(raw_prompt_text)
 
-        # --- Input Validation ---
         if not text:
             QMessageBox.warning(self, "输入缺失", "请输入要合成的文本。")
             self.text_input_clone.setFocus()
             return
         if not prompt_speech:
             QMessageBox.warning(self, "输入缺失", "请选择一个参考音频文件进行声音克隆。")
-            # Maybe visually indicate the button or field?
             return
         if not os.path.exists(prompt_speech):
              QMessageBox.critical(self, "文件错误", f"选择的参考音频文件不存在或无法访问:\n{prompt_speech}")
-             self.prompt_audio_path_edit.clear() # Clear invalid path
+             self.prompt_audio_path_edit.clear()
              return
 
-        # Prepare arguments dictionary for the backend function
         args = {
-            "text": text, # Use cleaned text
+            "text": text,
             "prompt_speech_path": prompt_speech,
-            "prompt_text": prompt_text if len(prompt_text) >= 2 else None, # Use cleaned prompt text
+            "prompt_text": prompt_text if len(prompt_text) >= 2 else None,
             "gender": None,
             "pitch": None,
             "speed": None,
         }
-
         self.start_tts_thread(args)
 
     @Slot()
     def run_voice_creation(self):
         """Prepares arguments and starts TTS thread for voice creation."""
         raw_text = self.text_input_create.toPlainText().strip()
-        if not raw_text: # Check raw text first
+        if not raw_text:
             QMessageBox.warning(self, "输入缺失", "请输入要合成的文本。")
             self.text_input_create.setFocus()
             return
 
-        # --- Clean Text Input ---
         text = self.clean_text(raw_text)
-        if not text: # Check if text becomes empty after cleaning
+        if not text:
             QMessageBox.warning(self, "输入无效", "清理后的文本为空，请输入有效内容。")
             self.text_input_create.setFocus()
             return
 
-
-        # Get gender value ('male' or 'female') from combo box user data
         gender = self.gender_combo.currentData()
-
         pitch_level = self.pitch_slider.value()
         speed_level = self.speed_slider.value()
-
-        # Map slider GUI values (1-5) to actual float values expected by the model
-        pitch = UI_LEVELS_MAP.get(pitch_level, 1.0) # Default to 1.0 if key not found
+        pitch = UI_LEVELS_MAP.get(pitch_level, 1.0)
         speed = UI_LEVELS_MAP.get(speed_level, 1.0)
 
-        # Prepare arguments dictionary for the backend function
         args = {
-            "text": text, # Use cleaned text
+            "text": text,
             "prompt_speech_path": None,
             "prompt_text": None,
             "gender": gender,
             "pitch": pitch,
             "speed": speed,
         }
-
         self.start_tts_thread(args)
 
     # --- TTS Thread Management ---
@@ -442,17 +421,14 @@ class SparkTTS_GUI(QMainWindow):
             QMessageBox.warning(self, "正在处理", "另一个 TTS 任务正在进行中，请稍候。")
             return
 
-        # Disable generate buttons and update global status/player controls
         self.set_ui_busy(True)
-        # Reset status before starting
-        self.last_generated_filename = None # Clear previous filename display info
+        self.last_generated_filename = None
         self.output_status_label.setText("⏳ 正在初始化...")
         self.play_button.setEnabled(False)
         self.stop_button.setEnabled(False)
         self.open_folder_button.setEnabled(False)
         self.statusBar().showMessage("正在启动 TTS 任务...")
 
-        # --- Progress Dialog ---
         self.progress_dialog = QProgressDialog("正在生成语音...", "取消", 0, 0, self)
         self.progress_dialog.setMinimumDuration(0)
         self.progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
@@ -460,8 +436,6 @@ class SparkTTS_GUI(QMainWindow):
         self.progress_dialog.canceled.connect(self.cancel_tts)
         self.progress_dialog.show()
 
-
-        # --- Create and Start Worker Thread ---
         self.tts_thread = TTSWorker(self.model, args_dict)
         self.tts_thread.finished.connect(self.on_tts_finished)
         self.tts_thread.error.connect(self.on_tts_error)
@@ -482,14 +456,13 @@ class SparkTTS_GUI(QMainWindow):
     def on_tts_finished(self, result_path):
         """Handles successful completion of the TTS thread."""
         self.last_generated_audio_path = result_path
-        self.last_generated_filename = Path(result_path).name # <-- Store filename
+        self.last_generated_filename = Path(result_path).name
         logging.info(f"TTS 成功完成，文件: {result_path}")
 
         if self.progress_dialog:
              self.progress_dialog.close()
              self.progress_dialog = None
 
-        # <-- Update status using the stored filename -->
         self.output_status_label.setText(f"✅ 生成成功: {self.last_generated_filename}")
         self.play_button.setEnabled(True)
         self.stop_button.setEnabled(False)
@@ -509,14 +482,12 @@ class SparkTTS_GUI(QMainWindow):
             self.progress_dialog = None
 
         QMessageBox.critical(self, "TTS 错误", f"语音生成过程中发生错误:\n{error_message}")
-        # <-- Clear filename on error -->
         self.last_generated_filename = None
         self.output_status_label.setText("❌ 生成失败。")
         self.statusBar().showMessage(f"错误: {error_message}", 10000)
 
         self.play_button.setEnabled(False)
         self.stop_button.setEnabled(False)
-        # Keep open folder button potentially active if default dir exists
         self.open_folder_button.setEnabled(os.path.isdir("tts_results"))
 
         self.set_ui_busy(False)
@@ -528,8 +499,7 @@ class SparkTTS_GUI(QMainWindow):
         logging.info("用户请求取消 TTS 任务。")
         if self.tts_thread and self.tts_thread.isRunning():
             self.tts_thread.cancel()
-            # Update UI immediately
-            self.output_status_label.setText("正在取消...") # <-- Display cancellation attempt
+            self.output_status_label.setText("正在取消...")
             self.statusBar().showMessage("正在尝试取消任务...")
         else:
             logging.warning("无法取消：没有正在运行的 TTS 任务。")
@@ -551,7 +521,6 @@ class SparkTTS_GUI(QMainWindow):
             audio_url = QUrl.fromLocalFile(os.path.abspath(self.last_generated_audio_path))
             self.player.setSource(audio_url)
             self.player.play()
-            # Initial status set in playback_state_changed
             self.stop_button.setEnabled(True)
             self.play_button.setEnabled(False)
         else:
@@ -565,7 +534,6 @@ class SparkTTS_GUI(QMainWindow):
         if self.player.playbackState() != QMediaPlayer.PlaybackState.StoppedState:
             self.player.stop()
             logging.info("音频播放已停止。")
-            # Status update handled by playback_state_changed
             self.stop_button.setEnabled(False)
             self.play_button.setEnabled(self.last_generated_filename is not None and os.path.exists(self.last_generated_audio_path))
 
@@ -573,10 +541,8 @@ class SparkTTS_GUI(QMainWindow):
     def _update_playback_status(self, status_prefix):
         """Helper to update status label while preserving filename."""
         if self.last_generated_filename:
-             # Combine prefix with the stored filename
              self.output_status_label.setText(f"{status_prefix} ({self.last_generated_filename})")
         else:
-             # Fallback if filename isn't set (e.g., before first generation)
              self.output_status_label.setText(status_prefix)
 
 
@@ -584,7 +550,7 @@ class SparkTTS_GUI(QMainWindow):
     def media_status_changed(self, status):
         """Handles changes in the media player's status."""
         current_text = self.output_status_label.text()
-        if "❌" in current_text: return # Don't overwrite error
+        if "❌" in current_text: return
 
         if status == QMediaPlayer.MediaStatus.LoadingMedia:
              self._update_playback_status("正在加载...")
@@ -593,7 +559,7 @@ class SparkTTS_GUI(QMainWindow):
                  self._update_playback_status("已加载")
         elif status == QMediaPlayer.MediaStatus.EndOfMedia:
             logging.info("播放到达文件末尾.")
-            self._update_playback_status("✅ 播放完毕") # <-- Use helper
+            self._update_playback_status("✅ 播放完毕")
             self.stop_button.setEnabled(False)
             self.play_button.setEnabled(self.last_generated_filename is not None and os.path.exists(self.last_generated_audio_path))
         elif status == QMediaPlayer.MediaStatus.StalledMedia:
@@ -601,8 +567,8 @@ class SparkTTS_GUI(QMainWindow):
              logging.warning("音频播放中断 (StalledMedia)")
         elif status == QMediaPlayer.MediaStatus.InvalidMedia:
             logging.error("媒体状态无效，无法播放文件。")
-            self.output_status_label.setText("❌ 无法播放此音频文件。") # Keep simple error
-            self.last_generated_filename = None # Clear filename as it's invalid
+            self.output_status_label.setText("❌ 无法播放此音频文件。")
+            self.last_generated_filename = None
             self.play_button.setEnabled(False)
             self.stop_button.setEnabled(False)
 
@@ -612,25 +578,22 @@ class SparkTTS_GUI(QMainWindow):
         """Handles changes in the player's playback state (Playing, Paused, Stopped)."""
         logging.debug(f"Playback state changed: {state}")
         current_text = self.output_status_label.text()
-        # Avoid overwriting error/finished status unless stopping
         is_error = "❌" in current_text
         is_finished = "✅" in current_text
 
         if state == QMediaPlayer.PlaybackState.PlayingState:
-            if not is_error: # Don't change status if error occurred previously
-                 self._update_playback_status("▶️ 正在播放...") # <-- Use helper
+            if not is_error:
+                 self._update_playback_status("▶️ 正在播放...")
                  self.stop_button.setEnabled(True)
                  self.play_button.setEnabled(False)
         elif state == QMediaPlayer.PlaybackState.PausedState:
              if not is_error:
-                 self._update_playback_status("⏸️ 已暂停") # <-- Use helper
+                 self._update_playback_status("⏸️ 已暂停")
                  self.stop_button.setEnabled(True)
-                 self.play_button.setEnabled(True) # Allow resuming
+                 self.play_button.setEnabled(True)
         elif state == QMediaPlayer.PlaybackState.StoppedState:
-             # Only update if not already finished/error, or if user manually stopped
              if not is_finished and not is_error:
-                 self._update_playback_status("⏹️ 播放停止") # <-- Use helper
-             # Always update buttons on stop
+                 self._update_playback_status("⏹️ 播放停止")
              self.stop_button.setEnabled(False)
              self.play_button.setEnabled(not is_error and self.last_generated_filename is not None and os.path.exists(self.last_generated_audio_path))
 
@@ -640,8 +603,8 @@ class SparkTTS_GUI(QMainWindow):
         """Handles errors reported by the media player."""
         logging.error(f"媒体播放器错误 ({error_code}): {error_string}")
         QMessageBox.critical(self, "播放错误", f"无法播放音频文件。\n错误: {error_string}")
-        self.output_status_label.setText("❌ 播放失败") # Keep simple error
-        self.last_generated_filename = None # Clear filename info
+        self.output_status_label.setText("❌ 播放失败")
+        self.last_generated_filename = None
         self.play_button.setEnabled(False)
         self.stop_button.setEnabled(False)
 
@@ -756,4 +719,6 @@ if __name__ == "__main__":
     except Exception as e:
         logging.warning(f"无法设置高 DPI 属性: {e}")
 
+    # Get the script directory path *before* potentially changing directory in main()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     main()
